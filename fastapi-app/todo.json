@@ -2,9 +2,9 @@
   {
     "title": "20231529",
     "description": "suyeon kim",
-    "completed": false,
-    "id": 1,
     "category": "공부",
-    "priority": "⭐⭐"
+    "priority": "⭐⭐",
+    "completed": false,
+    "id": 1
   }
 ]
