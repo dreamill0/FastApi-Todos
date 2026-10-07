@@ -10,10 +10,10 @@
           max-width: 680px; 
           margin: 2rem auto; 
           padding: 0 1rem; 
-          background-color: #c8e6e3; /* 연한 민트빛 배경 */
+          background-color: #e1edec; /* 연한 민트빛 배경 */
         }
         h1 { color: #2e7d32; text-align: center; }
-        form { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1.5rem; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        form { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
         input[type="text"], select { flex: 1 1 10rem; padding: .5rem; border: 1px solid #c8e6c9; border-radius: 4px; }
         button { padding: .5rem 1rem; background-color: #66bb6a; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
         button:hover { background-color: #4caf50; }
@@ -25,6 +25,10 @@
         .done { text-decoration: line-through; color: #888; }
         #error { color: #b00020; text-align: center; }
         
+        /* 검색창 스타일 */
+        .search-container { margin-bottom: 1.5rem; }
+        .search-container input { width: 100%; box-sizing: border-box; padding: .6rem; border: 1px solid #c8e6c9; border-radius: 6px; background: white; }
+
         /* 수정 모드용 인라인 폼 스타일 */
         .edit-form { display: flex; gap: 0.4rem; flex: 1; flex-wrap: wrap; align-items: center; }
         .edit-form input, .edit-form select { padding: 0.3rem; font-size: 0.9rem; }
@@ -64,6 +68,11 @@
         </select>
         <button type="submit">Add To-Do</button>
     </form>
+
+    <!-- 검색 입력창 추가 -->
+    <div class="search-container">
+        <input type="text" id="search-input" placeholder="🔍 할 일 제목, 내용, 카테고리 검색...">
+    </div>
     
     <p id="error" role="alert" hidden></p>
     <ul id="todo-list"></ul>
@@ -73,6 +82,7 @@
         const listEl = $("todo-list"), errorEl = $("error");
         
         let editingId = null; // 현재 수정 중인 항목의 ID를 기억하는 변수
+        let allTodos = [];    // 서버에서 받아온 전체 투두 목록 보관용
 
         async function api(url, method = "GET", body) {
           const res = await fetch(url, body
@@ -92,18 +102,39 @@
           }
         }
 
-        const load = () => run("목록 불러오기", async () => render(await api("/todos")));
+        // 전체 데이터를 불러온 뒤 검색 필터를 거쳐 렌더링
+        const load = () => run("목록 불러오기", async () => {
+          allTodos = await api("/todos");
+          render(getFilteredTodos());
+        });
+
         const save = (id, todo) => run("수정", async () => { await api(`/todos/${id}`, "PUT", todo); editingId = null; await load(); });
 
         function button(label, onclick, className = "") {
           return Object.assign(document.createElement("button"), { textContent: label, onclick, className });
         }
 
+        // 검색어에 맞는 항목만 필터링하는 함수
+        function getFilteredTodos() {
+          const keyword = $("search-input").value.trim().toLowerCase();
+          if (!keyword) return allTodos;
+          return allTodos.filter(todo => 
+            (todo.title && todo.title.toLowerCase().includes(keyword)) || 
+            (todo.description && todo.description.toLowerCase().includes(keyword)) ||
+            (todo.category && todo.category.toLowerCase().includes(keyword))
+          );
+        }
+
+        // 실시간 검색 입력 이벤트 리스너
+        $("search-input").oninput = () => {
+          render(getFilteredTodos());
+        };
+
         function render(todos) {
           listEl.replaceChildren(...todos.map((todo) => {
             const li = document.createElement("li");
 
-            // [케이스 1] 현재 이 항목을 수정 중인 경우 -> 한 화면(줄)에서 입력창과 선택 상자 제공
+            // [케이스 1] 현재 이 항목을 수정 중인 경우
             if (todo.id === editingId) {
               const editTitle = Object.assign(document.createElement("input"), { type: "text", value: todo.title });
               const editDesc = Object.assign(document.createElement("input"), { type: "text", value: todo.description });
@@ -153,7 +184,8 @@
               className: todo.completed ? "done" : "",
             });
 
-            li.append(check, text, button("Edit", () => { editingId = todo.id; render(todos); }), button("Delete", () => remove(todo.id)));
+            // 일반 목록 렌더링 시 현재 필터링된 상태를 유지하면서 렌더링
+            li.append(check, text, button("Edit", () => { editingId = todo.id; render(getFilteredTodos()); }), button("Delete", () => remove(todo.id)));
             return li;
           }));
         }
@@ -173,6 +205,7 @@
               priority: $("priority").value
             });
             event.target.reset();
+            $("search-input.value") // 검색창 유지 혹은 초기화 선택 가능
             await load();
           });
         };
