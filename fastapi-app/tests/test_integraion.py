@@ -2,7 +2,7 @@ import pytest
 import requests
 
 # 팀 서버에 배포된 실제 주소와 포트
-BASE_URL = "http://163.239.77.78:5002"
+BASE_URL = "http://127.0.0.1:5002"
 
 def test_integration_crud_flow():
     # 1. 추가 (201 Created)
