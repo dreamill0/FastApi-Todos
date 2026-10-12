@@ -11,7 +11,7 @@ def setup_and_teardown(tmp_path, monkeypatch):
     # 실제 todo.json 대신 테스트마다 새 임시 파일 사용
     monkeypatch.setattr(main, "TODO_FILE", tmp_path / "todo.json")
     save_todos([])  # 테스트 전 초기화
-    yield
+    # yield
     # 테스트 후 정리
 
 def test_get_todos_empty():
