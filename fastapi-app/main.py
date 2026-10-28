@@ -24,6 +24,9 @@ class TodoIn(BaseModel):                         # 클라이언트가 보내는 
     priority: str = "중"
     completed: bool = False
 
+class TodoStatusUpdate(BaseModel):
+    completed: bool
+
 
 class TodoItem(TodoIn):                          # 서버가 돌려주는 데이터 (id 있음)
     id: int
@@ -74,6 +77,16 @@ def delete_todo(todo_id: int) -> None:
     todos = load_todos()
     del todos[find_index(todos, todo_id)]
     save_todos(todos)
+
+@app.patch("/todos/{todo_id}/status", responses={404: {"description": "Not Found"}})  # 완료 상태만 수정
+def update_todo_status(todo_id: int, payload: TodoStatusUpdate) -> TodoItem:
+    todos = load_todos()
+    idx = find_index(todos, todo_id)
+    
+    # 기존 아이템의 completed 값만 변경
+    todos[idx].completed = payload.completed
+    save_todos(todos)
+    return todos[idx]
 
 
 @app.get("/", include_in_schema=False)           # 화면 서빙
