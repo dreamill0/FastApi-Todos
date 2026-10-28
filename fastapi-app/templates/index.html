@@ -110,6 +110,12 @@
 
         const save = (id, todo) => run("수정", async () => { await api(`/todos/${id}`, "PUT", todo); editingId = null; await load(); });
 
+        // PATCH 엔드포인트를 호출하여 완료 상태만 빠르게 변경하는 함수 추가
+        const toggleStatus = (id, completed) => run("상태 변경", async () => {
+          await api(`/todos/${id}/status`, "PATCH", { completed });
+          await load();
+        });
+
         function button(label, onclick, className = "") {
           return Object.assign(document.createElement("button"), { textContent: label, onclick, className });
         }
@@ -173,7 +179,7 @@
             const check = Object.assign(document.createElement("input"), {
               type: "checkbox",
               checked: todo.completed,
-              onchange: () => save(todo.id, { ...todo, completed: check.checked }),
+              onchange: () => toggleStatus(todo.id, check.checked), // PATCH 엔드포인트 연동
             });
 
             const catClass = todo.category === '공부' ? 'cat-study' : (todo.category === '과제' ? 'cat-work' : 'cat-etc');
@@ -205,7 +211,6 @@
               priority: $("priority").value
             });
             event.target.reset();
-            $("search-input.value") // 검색창 유지 혹은 초기화 선택 가능
             await load();
           });
         };
