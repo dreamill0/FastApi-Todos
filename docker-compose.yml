@@ -46,8 +46,6 @@ services:
             static_configs:
               - targets: ['node-exporter:9100']
 
-          # FastAPI 앱이 /metrics 를 노출하지 않으면 이 타겟만 DOWN 으로 뜹니다.
-          # (prometheus-fastapi-instrumentator 등을 붙이면 동작)
           - job_name: fastapi-app
             metrics_path: /metrics
             static_configs:
@@ -94,7 +92,6 @@ services:
       - -JTARGET_PORT=8000
       - -JINFLUX_URL=http://influxdb:8086/api/v2/write?org=my-org&bucket=my-bucket
       - -JINFLUX_TOKEN=${INFLUX_TOKEN:-local-dev-token-change-me}
-      # 부하 조절
       - -JTHREADS=10
       - -JRAMP_UP=10
       - -JDURATION=180
@@ -138,6 +135,7 @@ services:
       - GF_AUTH_ANONYMOUS_ENABLED=false
     volumes:
       - grafana-data:/var/lib/grafana
+      - grafana-provisioning:/etc/grafana/provisioning
     networks:
       - loadtest-net
 
