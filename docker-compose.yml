@@ -24,13 +24,12 @@ services:
             isDefault: true
             editable: true
             jsonData:
-              version: Flux
-              organization: my-org
-              defaultBucket: my-bucket
-              httpMode: POST
-              timeout: 30
+              version: InfluxQL
+              httpMode: GET
+            database: my-bucket
+            user: admin
             secureJsonData:
-              token: $${INFLUX_TOKEN}
+              password: local-dev-password-change-me
         EOF
         cat > /cfg/prometheus/prometheus.yml <<'EOF'
         global:
@@ -90,8 +89,7 @@ services:
       - /jmeter/results/report
       - -JTARGET_HOST=fastapi-app
       - -JTARGET_PORT=8000
-      - -JINFLUX_URL=http://influxdb:8086/api/v2/write?org=my-org&bucket=my-bucket
-      - -JINFLUX_TOKEN=${INFLUX_TOKEN:-local-dev-token-change-me}
+      - -JINFLUX_URL=http://influxdb:8086/write?db=my-bucket
       - -JTHREADS=10
       - -JRAMP_UP=10
       - -JDURATION=180
@@ -106,17 +104,13 @@ services:
     ports:
       - "8086:8086"
     environment:
-      - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=admin
-      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUX_ADMIN_PASSWORD:-local-dev-password-change-me}
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUX_TOKEN:-local-dev-token-change-me}
-      - DOCKER_INFLUXDB_INIT_ORG=my-org
-      - DOCKER_INFLUXDB_INIT_BUCKET=my-bucket
-      - DOCKER_INFLUXDB_INIT_RETENTION=7d
+      - INFLUXDB_DB=my-bucket
+      - INFLUXDB_ADMIN_USER=admin
+      - INFLUXDB_ADMIN_PASSWORD=local-dev-password-change-me
     volumes:
-      - influxdb-data:/var/lib/influxdb2
+      - influxdb-data:/var/lib/influxdb
     healthcheck:
-      test: ["CMD", "influx", "ping"]
+      test: ["CMD", "influx", "-execute", "SHOW DATABASES"]
       interval: 5s
       timeout: 3s
       retries: 20
