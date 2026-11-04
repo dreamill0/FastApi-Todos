@@ -1,9 +1,66 @@
-# 최상단 version 키는 Compose Spec 에서 폐기되었습니다 (Compose V2 에서 경고 발생) → 삭제
 services:
+  config-init:
+    image: busybox:1.37
+    container_name: config-init
+    environment:
+      - INFLUX_TOKEN=${INFLUX_TOKEN:-local-dev-token-change-me}
+    volumes:
+      - prometheus-config:/cfg/prometheus
+      - grafana-provisioning:/cfg/grafana
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        mkdir -p /cfg/grafana/datasources /cfg/grafana/dashboards \
+                 /cfg/grafana/plugins /cfg/grafana/alerting /cfg/grafana/notifiers
+        cat > /cfg/grafana/datasources/influxdb.yml <<EOF
+        apiVersion: 1
+        datasources:
+          - name: InfluxDB-JMeter
+            type: influxdb
+            access: proxy
+            url: http://influxdb:8086
+            isDefault: true
+            editable: true
+            jsonData:
+              version: Flux
+              organization: my-org
+              defaultBucket: my-bucket
+              httpMode: POST
+              timeout: 30
+            secureJsonData:
+              token: $${INFLUX_TOKEN}
+        EOF
+        cat > /cfg/prometheus/prometheus.yml <<'EOF'
+        global:
+          scrape_interval: 15s
+          evaluation_interval: 15s
+
+        scrape_configs:
+          - job_name: prometheus
+            static_configs:
+              - targets: ['localhost:9090']
+
+          - job_name: node-exporter
+            static_configs:
+              - targets: ['node-exporter:9100']
+
+          # FastAPI 앱이 /metrics 를 노출하지 않으면 이 타겟만 DOWN 으로 뜹니다.
+          # (prometheus-fastapi-instrumentator 등을 붙이면 동작)
+          - job_name: fastapi-app
+            metrics_path: /metrics
+            static_configs:
+              - targets: ['fastapi-app:8000']
+        EOF
+        echo "config-init: prometheus.yml and grafana datasource written"
+    networks:
+      - loadtest-net
+
   fastapi-app:
     build:
-      context: ./fastapi-app      # Dockerfile이 위치한 디렉토리 경로
-      dockerfile: Dockerfile      # Dockerfile 이름 (생략 가능, 기본값은 'Dockerfile')
+      context: ./fastapi-app
+      dockerfile: Dockerfile
     container_name: FastApi-app
     ports:
       - "5001:8000"
@@ -11,39 +68,113 @@ services:
       - loadtest-net
 
   jmeter:
-    build:
-      context: ./jmeter
-      dockerfile: Dockerfile
+    image: alpine/jmeter:5.6.3
     container_name: jmeter
+    profiles: ["test"]
     volumes:
-      - ./jmeter:/jmeter
+      - ./fastapi_test_plan.jmx:/jmeter/fastapi_test_plan.jmx:ro
+      - ./results:/jmeter/results
+    working_dir: /jmeter
+    depends_on:
+      influxdb:
+        condition: service_healthy
+      fastapi-app:
+        condition: service_started
     command:
-      - jmeter
       - -n
       - -t
       - /jmeter/fastapi_test_plan.jmx
+      - -f
       - -l
-      - /jmeter/results.jtl
-      - -JTARGET_HOST=fastapi-app
-      - -JTARGET_PORT=8000
-      - -Jjmeter.save.saveservice.output_format=csv
+      - /jmeter/results/results.jtl
       - -e
       - -o
-      - /jmeter/report
+      - /jmeter/results/report
+      - -JTARGET_HOST=fastapi-app
+      - -JTARGET_PORT=8000
+      - -JINFLUX_URL=http://influxdb:8086/api/v2/write?org=my-org&bucket=my-bucket
+      - -JINFLUX_TOKEN=${INFLUX_TOKEN:-local-dev-token-change-me}
+      # 부하 조절
+      - -JTHREADS=10
+      - -JRAMP_UP=10
+      - -JDURATION=180
+      - -Jjmeter.save.saveservice.output_format=csv
+    networks:
+      - loadtest-net
+
+  influxdb:
+    image: influxdb:2.7
+    container_name: influxdb
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUX_ADMIN_PASSWORD:-local-dev-password-change-me}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUX_TOKEN:-local-dev-token-change-me}
+      - DOCKER_INFLUXDB_INIT_ORG=my-org
+      - DOCKER_INFLUXDB_INIT_BUCKET=my-bucket
+      - DOCKER_INFLUXDB_INIT_RETENTION=7d
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    networks:
+      - loadtest-net
+
+  grafana:
+    image: grafana/grafana:13.3.0
+    container_name: grafana
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-local-dev-password-change-me}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - grafana-provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      config-init:
+        condition: service_completed_successfully
+      influxdb:
+        condition: service_healthy
+    networks:
+      - loadtest-net
+
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    container_name: prometheus
+    volumes:
+      - prometheus-config:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:7070:9090"
+    depends_on:
+      config-init:
+        condition: service_completed_successfully
+    networks:
+      - loadtest-net
+
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    container_name: node-exporter
+    ports:
+      - "127.0.0.1:7100:9100"
     networks:
       - loadtest-net
 
   sonarqube:
-    # latest 태그는 재현이 안 되고, 어느 날 메이저 업그레이드가 끼어들어 DB 마이그레이션이 터집니다.
-    # Community Build 최신 버전으로 고정 (2026-11 기준)
     image: sonarqube:26.10.0.133078-community
     container_name: sonarqube
     ports:
-      # 0.0.0.0 바인딩 금지. 인증 없는 관리 UI 가 전 인터넷에 열립니다.
-      # 접속은 SSH 터널(ssh -L 9000:127.0.0.1:9000 ...) 또는 역방향 프록시로
       - "127.0.0.1:9000:9000"
     environment:
-      # 학습 환경 편의용입니다. 운영에서는 호스트의 vm.max_map_count 를 올리고 이 옵션은 끌 것
       - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
     volumes:
       - sonarqube_conf:/opt/sonarqube/conf
@@ -53,70 +184,17 @@ services:
     networks:
       - loadtest-net
 
-  prometheus:
-    image: prom/prometheus:v3.15.1   # 최신 안정 버전 고정 (LTS 가 필요하면 v3.13.5)
-    container_name: prometheus
-    volumes:
-      # 설정 파일은 읽기 전용으로 마운트
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    ports:
-      - "127.0.0.1:7070:9090"   # 외부 노출 금지
-    networks:
-      - loadtest-net
-
-  grafana:
-    image: grafana/grafana:13.3.0   # 최신 안정 버전 고정
-    container_name: grafana
-    ports:
-      - "127.0.0.1:3000:3000"   # 외부 노출 금지
-    environment:
-      # admin/admin 을 평문으로 박아두면 포트가 열리는 순간 바로 관리자 계정이 털립니다.
-      # 비밀번호는 git 에 올라가지 않는 .env 파일에 두고 참조하세요. (.gitignore 에 .env 추가 필수)
-      #   .env  예)  GRAFANA_ADMIN_PASSWORD=<직접 만든 긴 랜덤 문자열>
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD 를 .env 에 설정하세요}
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_AUTH_ANONYMOUS_ENABLED=false
-    volumes:
-      - grafana-data:/var/lib/grafana
-    networks:
-      - loadtest-net
-
-  node-exporter:
-    image: prom/node-exporter:v1.12.1   # 최신 안정 버전 고정
-    container_name: node-exporter
-    ports:
-      # node-exporter 는 인증이 전혀 없고 호스트의 CPU/메모리/네트워크/마운트 정보를 그대로 뱉습니다.
-      # 외부에 열어두면 정찰(recon) 과 증폭 공격의 표적이 됩니다. 반드시 루프백에만 바인딩
-      - "127.0.0.1:7100:9100"
-    networks:
-      - loadtest-net
-
-  influxdb:
-    image: influxdb:2.7
-    container_name: influxdb
-    restart: always
-    ports:  
-      - "8086:8086"
-    environment:
-      - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=admin
-      - DOCKER_INFLUXDB_INIT_PASSWORD=admin1234
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=my-super-secret-token-123
-      - DOCKER_INFLUXDB_INIT_ORG=my-org
-      - DOCKER_INFLUXDB_INIT_BUCKET=my-bucket
-volumes:
-  - influxdb-data:/var/lib/influxdb2
-networks:
-  loadtest-net:
-    driver: bridge
-
 networks:
   loadtest-net:
     driver: bridge
 
 volumes:
+  prometheus-config:
+  prometheus-data:
+  grafana-provisioning:
+  grafana-data:
+  influxdb-data:
   sonarqube_conf:
   sonarqube_data:
   sonarqube_logs:
   sonarqube_extensions:
-  grafana-data:
