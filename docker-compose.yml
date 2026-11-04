@@ -69,7 +69,7 @@ services:
     container_name: jmeter
     profiles: ["test"]
     volumes:
-      - ./fastapi_test_plan.jmx:/jmeter/fastapi_test_plan.jmx:ro
+      - ./jmeter/fastapi_test_plan.jmx:/jmeter/fastapi_test_plan.jmx:ro
       - ./results:/jmeter/results
     working_dir: /jmeter
     depends_on:
