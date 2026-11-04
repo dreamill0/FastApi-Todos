@@ -4,10 +4,10 @@
     <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="FastAPI Performance Test" enabled="true">
       <stringProp name="TestPlan.comments"></stringProp>
       <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.tearDown_on_shutdown">true</boolProp>
       <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
       <elementProp name="TestPlan.user_defined_variables" elementType="Arguments">
         <collectionProp name="Arguments.arguments">
-          <!-- 필요한 전역 변수들을 추가할 수 있습니다. -->
           <!-- 주의: -JBASE_URL=... 로 넘긴 값은 JMeter '프로퍼티'이라 __P() 로만 읽힙니다.
                이름이 같은 사용자 정의 변수(UDV)를 만들어도 -J 값이 들어오지 않아
                기존 설정으로는 항상 localhost 를 때리고 있었습니다. -->
@@ -36,25 +36,29 @@
         <stringProp name="HTTPSampler.connect_timeout">5000</stringProp>
         <stringProp name="HTTPSampler.response_timeout">30000</stringProp>
         <stringProp name="HTTPSampler.protocol">http</stringProp>
-        <stringProp name="HTTPSampler.contentEncoding"></stringProp>
+        <stringProp name="HTTPSampler.contentEncoding">UTF-8</stringProp>
         <stringProp name="HTTPSampler.path"></stringProp>
         <boolProp name="HTTPSampler.image_parser">false</boolProp>
         <boolProp name="HTTPSampler.concurrentDwn">true</boolProp>
         <stringProp name="HTTPSampler.concurrentPool">4</stringProp>
       </ConfigTestElement>
       <hashTree/>
-      <!-- Thread Group: 사용자 10명, 10초 램프업, 1회 루프 -->
+
+      <!-- Thread Group
+           기존 설정(10 threads / ramp-up 10s / loop 1)은 총 30요청에 10초만에 끝나서
+           InfluxDB 에 점이 몇 개밖에 안 찍혔습니다. scheduler 로 일정 시간 동안 돌립니다.
+           -JTHREADS / -JRAMP_UP / -JDURATION 으로 조절 -->
       <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="FastAPI Load Test" enabled="true">
         <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
-        <elementProp name="ThreadGroup.main_controller" elementType="LoopController">
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
           <boolProp name="LoopController.continue_forever">false</boolProp>
-          <stringProp name="LoopController.loops">1</stringProp>
+          <stringProp name="LoopController.loops">-1</stringProp>
         </elementProp>
-        <stringProp name="ThreadGroup.num_threads">10</stringProp>
-        <stringProp name="ThreadGroup.ramp_time">10</stringProp>
-        <boolProp name="ThreadGroup.scheduler">false</boolProp>
-        <stringProp name="ThreadGroup.duration"></stringProp>
-        <stringProp name="ThreadGroup.delay"></stringProp>
+        <stringProp name="ThreadGroup.num_threads">${__P(THREADS,10)}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">${__P(RAMP_UP,10)}</stringProp>
+        <boolProp name="ThreadGroup.scheduler">true</boolProp>
+        <stringProp name="ThreadGroup.duration">${__P(DURATION,180)}</stringProp>
+        <stringProp name="ThreadGroup.delay">0</stringProp>
       </ThreadGroup>
       <hashTree>
         <!-- 샘플러 1: GET / (루트 엔드포인트 테스트) -->
@@ -71,19 +75,23 @@
           <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
           <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
           <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
-          <stringProp name="HTTPSampler.monitor">false</stringProp>
           <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
         </HTTPSamplerProxy>
         <hashTree/>
-        <!-- 샘플러 2: POST /users (사용자 생성) -->
+
+        <!-- 샘플러 2: POST /users (사용자 생성)
+             [수정 1] postBodyRaw 가 false(기본값)였습니다. 그래서 JSON 이 요청 바디가 아니라
+                      form 파라미터 이름으로 전송되어 FastAPI 가 422 를 돌려주고 있었습니다.
+             [수정 2] contentEncoding 은 Content-Type 이 아니라 문자셋 지정입니다.
+                      application/json 은 Header Manager 로 보내야 합니다.
+             [수정 3] 바디 앞뒤의 개행/들여쓰기 공백 제거. 이메일은 중복 방지를 위해 유니크하게 생성 -->
         <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="POST /users" enabled="true">
+          <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
           <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
             <collectionProp name="Arguments.arguments">
-              <elementProp name="body" elementType="HTTPArgument">
+              <elementProp name="" elementType="HTTPArgument">
                 <boolProp name="HTTPArgument.always_encode">false</boolProp>
-                <stringProp name="Argument.value">
-{"name": "Test User", "email": "test@example.com"}
-                </stringProp>
+                <stringProp name="Argument.value">{"name": "Test User ${__threadNum}", "email": "test-${__threadNum}-${__counter(FALSE,)}@example.com"}</stringProp>
                 <stringProp name="Argument.metadata">=</stringProp>
               </elementProp>
             </collectionProp>
@@ -97,11 +105,25 @@
           <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
           <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
           <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
-          <stringProp name="HTTPSampler.monitor">false</stringProp>
           <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
-          <stringProp name="HTTPSampler.contentEncoding">application/json</stringProp>
+          <stringProp name="HTTPSampler.contentEncoding">UTF-8</stringProp>
         </HTTPSamplerProxy>
-        <hashTree/>
+        <hashTree>
+          <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="JSON Content-Type" enabled="true">
+            <collectionProp name="HeaderManager.headers">
+              <elementProp name="" elementType="Header">
+                <stringProp name="Header.name">Content-Type</stringProp>
+                <stringProp name="Header.value">application/json</stringProp>
+              </elementProp>
+              <elementProp name="" elementType="Header">
+                <stringProp name="Header.name">Accept</stringProp>
+                <stringProp name="Header.value">application/json</stringProp>
+              </elementProp>
+            </collectionProp>
+          </HeaderManager>
+          <hashTree/>
+        </hashTree>
+
         <!-- 샘플러 3: GET /users (전체 사용자 조회) -->
         <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET /users" enabled="true">
           <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
@@ -116,12 +138,89 @@
           <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
           <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
           <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
-          <stringProp name="HTTPSampler.monitor">false</stringProp>
           <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
         </HTTPSamplerProxy>
         <hashTree/>
-        <!-- 추가 샘플러를 필요에 따라 추가할 수 있습니다. 예를 들어 GET /metrics, POST /items, GET /items, 등 -->
+
+        <!-- 2xx 가 아니면 실패로 집계합니다. 이게 없으면 500 응답도 '성공'으로 기록되어
+             대시보드의 에러율이 0% 로 보입니다. -->
+        <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="2xx 응답 확인" enabled="true">
+          <collectionProp name="Asserion.test_strings">
+            <stringProp name="49586">2\d\d</stringProp>
+          </collectionProp>
+          <stringProp name="Assertion.custom_message">예상치 못한 응답 코드</stringProp>
+          <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+          <boolProp name="Assertion.assume_success">false</boolProp>
+          <intProp name="Assertion.test_type">1</intProp>
+        </ResponseAssertion>
+        <hashTree/>
       </hashTree>
+
+      <!-- ===== [핵심 추가] InfluxDB Backend Listener =====
+           기존 플랜에는 이 엘리먼트가 아예 없었습니다. 결과가 results.jtl 과 HTML 리포트로만
+           떨어지고 InfluxDB 로는 단 한 건도 전송되지 않아 대시보드가 비어 있었습니다.
+
+           - InfluxDB 2.x 는 1.x 의 /write?db=... 가 아니라 토큰 인증이 붙은 /api/v2/write 를 씁니다.
+           - URL 과 토큰은 docker-compose 의 -JINFLUX_URL / -JINFLUX_TOKEN 으로 주입됩니다.
+           - summaryOnly=true 로 두면 샘플러별 데이터가 들어오지 않아 대시보드 패널 대부분이 빕니다. -->
+      <BackendListener guiclass="BackendListenerGui" testclass="BackendListener" testname="InfluxDB Backend Listener" enabled="true">
+        <elementProp name="arguments" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" enabled="true">
+          <collectionProp name="Arguments.arguments">
+            <elementProp name="influxdbMetricsSender" elementType="Argument">
+              <stringProp name="Argument.name">influxdbMetricsSender</stringProp>
+              <stringProp name="Argument.value">org.apache.jmeter.visualizers.backend.influxdb.HttpMetricsSender</stringProp>
+              <stringProp name="Argument.metadata">=</stringProp>
+            </elementProp>
+            <elementProp name="influxdbUrl" elementType="Argument">
+              <stringProp name="Argument.name">influxdbUrl</stringProp>
+              <stringProp name="Argument.value">${__P(INFLUX_URL,http://influxdb:8086/api/v2/write?org=my-org&amp;bucket=my-bucket)}</stringProp>
+              <stringProp name="Argument.metadata">=</stringProp>
+            </elementProp>
+            <elementProp name="influxdbToken" elementType="Argument">
+              <stringProp name="Argument.name">influxdbToken</stringProp>
+              <stringProp name="Argument.value">${__P(INFLUX_TOKEN,)}</stringProp>
+              <stringProp name="Argument.metadata">=</stringProp>
+            </elementProp>
+            <elementProp name="application" elementType="Argument">
+              <stringProp name="Argument.name">application</stringProp>
+              <stringProp name="Argument.value">fastapi-app</stringProp>
+              <stringProp name="Argument.metadata">=</stringProp>
+            </elementProp>
+            <elementProp name="measurement" elementType="Argument">
+              <stringProp name="Argument.name">measurement</stringProp>
+              <stringProp name="Argument.value">jmeter</stringProp>
+              <stringProp name="Argument.metadata">=</stringProp>
+            </elementProp>
+            <elementProp name="summaryOnly" elementType="Argument">
+              <stringProp name="Argument.name">summaryOnly</stringProp>
+              <stringProp name="Argument.value">false</stringProp>
+              <stringProp name="Argument.metadata">=</stringProp>
+            </elementProp>
+            <elementProp name="samplersRegex" elementType="Argument">
+              <stringProp name="Argument.name">samplersRegex</stringProp>
+              <stringProp name="Argument.value">.*</stringProp>
+              <stringProp name="Argument.metadata">=</stringProp>
+            </elementProp>
+            <elementProp name="percentiles" elementType="Argument">
+              <stringProp name="Argument.name">percentiles</stringProp>
+              <stringProp name="Argument.value">90;95;99</stringProp>
+              <stringProp name="Argument.metadata">=</stringProp>
+            </elementProp>
+            <elementProp name="testTitle" elementType="Argument">
+              <stringProp name="Argument.name">testTitle</stringProp>
+              <stringProp name="Argument.value">FastAPI Performance Test</stringProp>
+              <stringProp name="Argument.metadata">=</stringProp>
+            </elementProp>
+            <elementProp name="eventTags" elementType="Argument">
+              <stringProp name="Argument.name">eventTags</stringProp>
+              <stringProp name="Argument.value"></stringProp>
+              <stringProp name="Argument.metadata">=</stringProp>
+            </elementProp>
+          </collectionProp>
+        </elementProp>
+        <stringProp name="classname">org.apache.jmeter.visualizers.backend.influxdb.InfluxdbBackendListenerClient</stringProp>
+      </BackendListener>
+      <hashTree/>
     </hashTree>
   </hashTree>
 </jmeterTestPlan>
