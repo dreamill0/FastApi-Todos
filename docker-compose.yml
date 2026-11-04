@@ -91,6 +91,25 @@ services:
     networks:
       - loadtest-net
 
+  influxdb:
+    image: influxdb:2.7
+    container_name: influxdb
+    restart: always
+    ports:  
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=admin1234
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=my-super-secret-token-123
+      - DOCKER_INFLUXDB_INIT_ORG=my-org
+      - DOCKER_INFLUXDB_INIT_BUCKET=my-bucket
+volumes:
+  - influxdb-data:/var/lib/influxdb2
+networks:
+  loadtest-net:
+    driver: bridge
+
 networks:
   loadtest-net:
     driver: bridge
