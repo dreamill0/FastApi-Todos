@@ -1,5 +1,8 @@
+from fastapi.testclient import TestClient
+import main
 from main import app, save_todos, load_todos, TodoItem
 
+client = TestClient(app)  
 def test_get_todos_with_category_filter():
     # 서로 다른 카테고리를 가진 두 개의 투두 생성
     todo1 = TodoItem(id=1, title="공부하기", description="파이썬 공부", category="공부", priority="상", completed=False)

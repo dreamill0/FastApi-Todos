@@ -58,7 +58,7 @@ def delete_todo(page, title):
 
 
 def test_page_loads_with_todo_form(page):
-    assert page.title() == "To-Do List"
+    assert page.title() == "Mint To-Do List"
     assert "Mint To-Do List" in page.locator("h1").inner_text()
     assert page.locator("#todo-form").is_visible()
 
