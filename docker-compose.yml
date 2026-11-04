@@ -100,7 +100,7 @@ services:
       - loadtest-net
 
   influxdb:
-    image: influxdb:2.7
+    image: influxdb:1.8
     container_name: influxdb
     restart: unless-stopped
     ports:
