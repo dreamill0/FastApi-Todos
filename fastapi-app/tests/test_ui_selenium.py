@@ -76,7 +76,7 @@ def delete_todo(driver, title):
 
 
 def test_page_loads_with_todo_form(driver):
-    assert driver.title == "To-Do List"
+    assert driver.title == "Mint To-Do List"
     assert "Mint To-Do List" in driver.find_element(By.TAG_NAME, "h1").text
     assert driver.find_element(By.ID, "todo-form").is_displayed()
 
