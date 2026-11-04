@@ -173,7 +173,7 @@
             </elementProp>
             <elementProp name="influxdbUrl" elementType="Argument">
               <stringProp name="Argument.name">influxdbUrl</stringProp>
-              <stringProp name="Argument.value">${__P(INFLUX_URL,http://influxdb:8086/api/v2/write?org=my-org&amp;bucket=my-bucket)}</stringProp>
+              <stringProp name="Argument.value">${__P(INFLUX_URL,http://influxdb:8086/write?db=my-bucket)}</stringProp>
               <stringProp name="Argument.metadata">=</stringProp>
             </elementProp>
             <elementProp name="influxdbToken" elementType="Argument">
