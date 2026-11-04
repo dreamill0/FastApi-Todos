@@ -6,5 +6,21 @@
     "priority": "⭐⭐",
     "completed": false,
     "id": 1
+  },
+  {
+    "title": "SOC 설계",
+    "description": "김수연",
+    "category": "과제",
+    "priority": "⭐⭐",
+    "completed": false,
+    "id": 2
+  },
+  {
+    "title": "오픈소스 실습",
+    "description": "김수연",
+    "category": "과제",
+    "priority": "⭐⭐",
+    "completed": false,
+    "id": 3
   }
 ]

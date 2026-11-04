@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>To-Do List</title>
+    <title>Mint To-Do List</title>
     <style>
         body { 
           font-family: system-ui, sans-serif; 
@@ -25,9 +25,13 @@
         .done { text-decoration: line-through; color: #888; }
         #error { color: #b00020; text-align: center; }
         
-        /* 검색창 스타일 */
-        .search-container { margin-bottom: 1.5rem; }
+        /* 검색창 및 카테고리 탭 스타일 */
+        .search-container { margin-bottom: 1rem; }
         .search-container input { width: 100%; box-sizing: border-box; padding: .6rem; border: 1px solid #c8e6c9; border-radius: 6px; background: white; }
+
+        .category-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+        .category-tab { padding: 0.4rem 0.8rem; background: white; border: 1px solid #c8e6c9; border-radius: 20px; cursor: pointer; font-size: 0.9rem; font-weight: bold; color: #555; }
+        .category-tab.active { background-color: #2e7d32; color: white; border-color: #2e7d32; }
 
         /* 수정 모드용 인라인 폼 스타일 */
         .edit-form { display: flex; gap: 0.4rem; flex: 1; flex-wrap: wrap; align-items: center; }
@@ -55,7 +59,7 @@
     <!-- 추가 폼 -->
     <form id="todo-form">
         <input type="text" id="title" placeholder="제목 (예: 과제 제출)" required>
-        <input type="text" id="description" placeholder="설명 (예: 20231529 홍길동)">
+        <input type="text" id="description" placeholder="설명 (예: 20231529 김수연)">
         <select id="category">
             <option value="공부">공부</option>
             <option value="과제">과제</option>
@@ -69,7 +73,15 @@
         <button type="submit">Add To-Do</button>
     </form>
 
-    <!-- 검색 입력창 추가 -->
+    <!-- 카테고리 필터 탭 추가 -->
+    <div class="category-tabs" id="category-tabs">
+        <button type="button" class="category-tab active" data-category="전체">전체</button>
+        <button type="button" class="category-tab" data-category="공부">공부</button>
+        <button type="button" class="category-tab" data-category="과제">과제</button>
+        <button type="button" class="category-tab" data-category="개인">개인</button>
+    </div>
+
+    <!-- 검색 입력창 -->
     <div class="search-container">
         <input type="text" id="search-input" placeholder="🔍 할 일 제목, 내용, 카테고리 검색...">
     </div>
@@ -81,8 +93,9 @@
         const $ = (id) => document.getElementById(id);
         const listEl = $("todo-list"), errorEl = $("error");
         
-        let editingId = null; // 현재 수정 중인 항목의 ID를 기억하는 변수
+        let editingId = null; // 현재 수정 중인 항목의 ID
         let allTodos = [];    // 서버에서 받아온 전체 투두 목록 보관용
+        let currentCategory = "전체"; // 현재 선택된 카테고리 탭
 
         async function api(url, method = "GET", body) {
           const res = await fetch(url, body
@@ -102,15 +115,16 @@
           }
         }
 
-        // 전체 데이터를 불러온 뒤 검색 필터를 거쳐 렌더링
+        // 전체 데이터를 불러온 뒤 필터를 거쳐 렌더링
         const load = () => run("목록 불러오기", async () => {
-          allTodos = await api("/todos");
+          // 백엔드 API에 카테고리 파라미터 전달 (전체가 아닐 경우)
+          const url = currentCategory === "전체" ? "/todos" : `/todos?category=${encodeURIComponent(currentCategory)}`;
+          allTodos = await api(url);
           render(getFilteredTodos());
         });
 
         const save = (id, todo) => run("수정", async () => { await api(`/todos/${id}`, "PUT", todo); editingId = null; await load(); });
 
-        // PATCH 엔드포인트를 호출하여 완료 상태만 빠르게 변경하는 함수 추가
         const toggleStatus = (id, completed) => run("상태 변경", async () => {
           await api(`/todos/${id}/status`, "PATCH", { completed });
           await load();
@@ -120,7 +134,7 @@
           return Object.assign(document.createElement("button"), { textContent: label, onclick, className });
         }
 
-        // 검색어에 맞는 항목만 필터링하는 함수
+        // 검색어 및 카테고리에 맞는 항목만 필터링
         function getFilteredTodos() {
           const keyword = $("search-input").value.trim().toLowerCase();
           if (!keyword) return allTodos;
@@ -131,16 +145,25 @@
           );
         }
 
-        // 실시간 검색 입력 이벤트 리스너
+        // 실시간 검색 입력 이벤트
         $("search-input").oninput = () => {
           render(getFilteredTodos());
         };
+
+        // 카테고리 탭 클릭 이벤트 처리
+        document.querySelectorAll(".category-tab").forEach(tab => {
+          tab.onclick = (e) => {
+            document.querySelectorAll(".category-tab").forEach(t => t.classList.remove("active"));
+            e.target.classList.add("active");
+            currentCategory = e.target.getAttribute("data-category");
+            load(); // 서버에 해당 카테고리 요청
+          };
+        });
 
         function render(todos) {
           listEl.replaceChildren(...todos.map((todo) => {
             const li = document.createElement("li");
 
-            // [케이스 1] 현재 이 항목을 수정 중인 경우
             if (todo.id === editingId) {
               const editTitle = Object.assign(document.createElement("input"), { type: "text", value: todo.title });
               const editDesc = Object.assign(document.createElement("input"), { type: "text", value: todo.description });
@@ -175,11 +198,10 @@
               return li;
             }
 
-            // [케이스 2] 평소 일반 목록 보기 화면
             const check = Object.assign(document.createElement("input"), {
               type: "checkbox",
               checked: todo.completed,
-              onchange: () => toggleStatus(todo.id, check.checked), // PATCH 엔드포인트 연동
+              onchange: () => toggleStatus(todo.id, check.checked),
             });
 
             const catClass = todo.category === '공부' ? 'cat-study' : (todo.category === '과제' ? 'cat-work' : 'cat-etc');
@@ -190,7 +212,6 @@
               className: todo.completed ? "done" : "",
             });
 
-            // 일반 목록 렌더링 시 현재 필터링된 상태를 유지하면서 렌더링
             li.append(check, text, button("Edit", () => { editingId = todo.id; render(getFilteredTodos()); }), button("Delete", () => remove(todo.id)));
             return li;
           }));
