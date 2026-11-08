@@ -132,6 +132,7 @@ services:
       - grafana-provisioning:/etc/grafana/provisioning
     networks:
       - loadtest-net
+      - default
 
   prometheus:
     image: prom/prometheus:v3.15.1
