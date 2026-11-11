@@ -1,4 +1,7 @@
 import json
+import logging                                   
+import sys                                       
+import time                                      
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -19,6 +22,31 @@ app = FastAPI(title="To-Do List API")
 
 # Prometheus 메트릭 엔드포인트(/metrics) 자동 수집 설정
 Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+
+# 액세스 로그를 표준 출력(stdout)으로 기록
+# Docker가 stdout을 컨테이너 로그로 저장하고, Alloy가 그 로그를 읽어 Loki로 전송
+custom_logger = logging.getLogger("custom.access")
+custom_logger.setLevel(logging.INFO)
+custom_logger.addHandler(logging.StreamHandler(sys.stdout))
+custom_logger.propagate = False                  # 상위 로거로 넘겨 두 번 찍히는 것을 방지
+
+# uvicorn 기본 액세스 로그 끄기 (아래 미들웨어가 대신 기록)
+# 켜 두면 요청 1번에 로그가 2줄씩 남아 대시보드 카운트가 2배가 됨
+logging.getLogger("uvicorn.access").disabled = True
+
+
+@app.middleware("http")                          # 모든 요청을 한 줄씩 기록
+async def log_requests(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration = time.perf_counter() - start
+    client = request.client.host if request.client else "-"
+    # 형식: IP - "METHOD PATH HTTP/1.1" 상태코드 응답시간 → 7번 LogQL 쿼리가 이 형식으로 파싱
+    custom_logger.info(
+        f'{client} - "{request.method} {request.url.path} HTTP/1.1" '
+        f'{response.status_code} {duration:.3f}s'
+    )
+    return response
 
 class TodoIn(BaseModel):                         # 클라이언트가 보내는 데이터 (id 없음)
     title: str = Field(min_length=1, max_length=100)
