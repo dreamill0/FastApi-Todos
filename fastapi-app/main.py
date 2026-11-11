@@ -51,12 +51,29 @@ def find_index(todos: list[TodoItem], todo_id: int) -> int:
     raise HTTPException(404, "To-Do item not found")
 
 
-@app.get("/todos")                                             # 목록 조회 (카테고리 필터링 지원)
-def get_todos(category: Optional[str] = None) -> list[TodoItem]:
+@app.get("/todos")                                            # 목록 조회 (카테고리, 정렬, 페이지네이션 지원)
+def get_todos(
+    category: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 100,
+    sort_by: str = "id",
+    order: str = "asc"
+) -> list[TodoItem]:
     todos = load_todos()
-    if category:
+    
+    # 1. 카테고리 필터링 (전체가 아니거나 값이 있을 때)
+    if category and category != "전체":
         todos = [t for t in todos if t.category == category]
-    return todos
+        
+    # 2. 정렬 (Sorting)
+    reverse_flag = (order.lower() == "desc")
+    try:
+        todos = sorted(todos, key=lambda x: getattr(x, sort_by, 0), reverse=reverse_flag)
+    except AttributeError:
+        pass  # 잘못된 필드명인 경우 정렬을 건너뜁니다.
+        
+    # 3. 페이지네이션 (Skip & Limit)
+    return todos[skip : skip + limit]
 
 
 @app.post("/todos", status_code=201)                           # 할 일 추가

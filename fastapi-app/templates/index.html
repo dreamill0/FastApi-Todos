@@ -85,6 +85,19 @@
     <div class="search-container">
         <input type="text" id="search-input" placeholder="🔍 할 일 제목, 내용, 카테고리 검색...">
     </div>
+
+    <!-- 정렬 및 페이지네이션 컨트롤 추가 -->
+    <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; align-items: center; background: white; padding: 10px; border-radius: 6px;">
+        <label for="sort-select" style="font-size: 0.9rem; font-weight: bold; color: #555;">정렬:</label>
+        <select id="sort-select" style="padding: 0.3rem;">
+            <option value="id">기본순</option>
+            <option value="title">제목순</option>
+        </select>
+        <select id="order-select" style="padding: 0.3rem;">
+            <option value="asc">오름차순</option>
+            <option value="desc">내림차순</option>
+        </select>
+    </div>
     
     <p id="error" role="alert" hidden></p>
     <ul id="todo-list"></ul>
